@@ -1,0 +1,48 @@
+granite.build:
+  name: skypilot-aws-unitxt-gpu-test
+  # eval/unitxt on skypilot/aws with one GPU (real EC2).
+  #
+  # The GPU counterpart of the CPU `slurm-cpu` fixture, with the step's documented
+  # example: ibm-granite/granite-4.2-3b on cards.mmlu_pro.engineering. A small
+  # `limit` keeps it to one short job; the score is printed by unitxt into the job
+  # log but is not asserted. What reaching SUCCESS proves, beyond `slurm-cpu`:
+  #   1. The hf:// model input is downloaded inline into the step's own instance
+  #      (skypilot/aws sets `inline: true` on its hf pull), and its path reaches
+  #      `--model_args pretrained=<path>`.
+  #   2. Setup's default torch (PyPI's Linux wheel, which bundles CUDA) works with
+  #      the node's NVIDIA driver, and `device=cuda` runs on the A10G.
+  #   3. `unitxt-evaluate --model hf` completes on a GPU, and `results` is registered.
+  #
+  # The output is env://, not hf://: on skypilot/aws each step gets its own
+  # instance, so a separate hfpush step could not see the results directory
+  # without a shared filesystem (EFS). It also keeps the test free of an HF write
+  # token. The model and dataset are public, so the pull needs no token either.
+  #
+  # Cost: one on-demand g5.xlarge-class instance (1x A10G 24 GB, 4 vCPU, 16 GiB)
+  # for the length of one job. granite-4.2-3b is ~6 GB in bf16.
+  targets:
+
+    evaluate:
+      environment_uri: space://environments/skypilot/aws
+      inputs:
+        model:
+          uri: hf:///models/ibm-granite/granite-4.2-3b
+      outputs:
+        results:
+          uri: "env:///results"
+          type: dataset
+      steps:
+        - step_uri: space://steps/eval/unitxt
+          config:
+            # Fast completion detection (the skypilot monitor's own default is
+            # 300s, which would dominate wall-clock for this short job).
+            poll_interval_seconds: 5
+            launcher_config:
+              resources:
+                # On skypilot, GPUs come only from launcher_config.resources;
+                # compute_config.num_gpus_per_node is not read there.
+                accelerators: "A10G:1"
+            unitxt_config:
+              tasks: "card=cards.mmlu_pro.engineering"
+              model_args: "torch_dtype=bfloat16,device=cuda"
+              limit: 10

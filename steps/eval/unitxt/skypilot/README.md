@@ -42,6 +42,25 @@ instead. It is generated from the sources here by the shared Makefile convention
 
   `make publish-step` copies it to `test/steps/eval/unitxt/skypilot/slurm-cpu/`,
   where the nightly extended suite runs it against the published step.
+- `test/aws-gpu/` + `test-data/aws-gpu/`: a GPU build test on skypilot/aws (real,
+  billed EC2), modelled on dpk's `aws-tok`. It evaluates the documented example,
+  `ibm-granite/granite-4.2-3b`, on 10 `cards.mmlu_pro.engineering` instances on one
+  `A10G` (`launcher_config.resources.accelerators`), with PyPI's default (CUDA)
+  torch. The output is `env://`: each AWS step gets its own instance, so an hfpush
+  step couldn't see the results without EFS. It runs the happy path only, so one
+  run is one EC2 launch. It skips unless AWS credentials are present; see
+  `docs/environments/skypilot-aws.md` for the `gb-skypilot` profile. Run it
+  deliberately:
+
+  ```sh
+  cd steps/eval/unitxt/skypilot
+  AWS_PROFILE=gb-skypilot GB_ENVIRONMENT=STANDALONE GBTEST_MODE=live PYTHONPATH=src \
+    ../../../../.venv/bin/python -m pytest -s -v test/aws-gpu
+  ```
+
+  `-s` is needed: a second SkyPilot launch in a captured process fails with
+  `OSError: [Errno 9] Bad file descriptor`. Afterwards, `sky status --refresh`
+  should show no clusters.
 
 ## Building, testing and publishing
 
